@@ -17,7 +17,8 @@ namespace osmfapra{
 
 enum GRAPH_FILETYPE{
 	FMI,
-	PBF
+	PBF,
+	CHFMI
 };
 
 using OsmId = uint32_t ;
@@ -27,30 +28,33 @@ struct OsmNode {
 	Lat lat;
 	Lng lng;
 };
-
 class GraphBuilder {
 private:
 	Config& config;
-	Graph& graph;
 	std::string& file;
 	GRAPH_FILETYPE& filetype;
 	bool reorder = false;
 	std::vector<OsmId> collectedOsmNodes;
-	void buildPbfGraph();
-	void preParseEdges();
-	void parseNodes();
-	static void parseNodesBlock(osmpbf::PrimitiveBlockInputAdaptor& pbi, std::unordered_set<uint32_t >& relevantNodes);
+	void buildPbfGraph(Graph& graph);
+	void preParseEdges(Graph& graph);
+	void parseNodes(Graph& graph);
+	static void parseNodesBlock(Graph& graph,osmpbf::PrimitiveBlockInputAdaptor& pbi, std::unordered_set<uint32_t >& relevantNodes);
 	uint32_t findMaxNodeId();
-	void reorderWithGrid();
-	void buildFmiGraph();
-	void parseFmiGraph();
-	void buildOffset();
+	void reorderWithGrid(Graph& graph);
+	void buildFmiGraph(Graph& graph);
+	void parseFmiGraph(Graph& graph);
+	template <typename Graph>
+	void buildOffset(Graph& graph);
 public:
 
 	std::unordered_set<OsmId> relevantNodes;
 	GraphBuilder(Graph& graph, std::string& file, GRAPH_FILETYPE& filetype, bool reorder, Config& config);
+	GraphBuilder(CHGraph& graph, CHGraph& backGraph, std::string& file, GRAPH_FILETYPE& filetype, bool reorder, Config& config);
 	~GraphBuilder() = default;
 
+	void buildChFmiGraph(CHGraph& graph);
+
+	void buildBackGraph(CHGraph& graph, CHGraph& backGraph);
 };
 
 }

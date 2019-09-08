@@ -13,13 +13,13 @@ set(SOURCES
     src/main.cpp
     src/Grid.cpp
     src/Config.cpp
-        src/Dijkstra.cpp)
+        src/Dijkstra.cpp src/CHDijkstra.cpp)
 
 set(HEADERS
     include/Graph.h
     include/GraphBuilder.h
     include/Grid.h
-    include/Config.h include/Dijkstra.h)
+    include/Config.h include/Dijkstra.h include/CHDijkstra.h)
 
 find_package(Boost REQUIRED COMPONENTS system iostreams)
 if(Boost_FOUND)

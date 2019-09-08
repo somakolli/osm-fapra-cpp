@@ -8,12 +8,13 @@
 
 namespace osmfapra
 {
-using NodeId = uint32_t;
+using NodeId = int64_t;
 using Lat = float;
 using Lng = float;
-using Distance = float;
-using Speed = uint16_t;
+using Distance = uint64_t ;
+using Speed = int32_t;
 using MySize = uint32_t;
+using Level = uint32_t ;
 class Node
 {
 public:
@@ -21,7 +22,16 @@ public:
     Lat lat;
     Lng lng;
 	friend std::ostream &operator<<(std::ostream & Str, const Node & node) {
-		Str << node.lat << ' ' << node.lng << '\n';
+		Str << node.lat << ' ' << node.lng;
+		return Str;
+	}
+};
+
+class CHNode : public Node {
+public:
+	Level level;
+	friend std::ostream &operator<<(std::ostream & Str, const CHNode & node) {
+		Str << (Node) node << ' ' << node.level;
 		return Str;
 	}
 };
@@ -34,11 +44,20 @@ public:
     Distance distance;
     Speed maxSpeed;
 	friend std::ostream &operator<<(std::ostream & Str, const Edge & edge) {
-		Str << edge.source << ' ' << edge.target << ' ' << edge.distance << ' ' << edge.maxSpeed << '\n';
+		Str << edge.source << ' ' << edge.target << ' ' << edge.distance << ' ' << edge.maxSpeed;
 		return Str;
 	}
 };
-    
+
+class CHEdge : public Edge {
+public:
+	NodeId child1;
+	NodeId child2;
+	friend std::ostream &operator<<(std::ostream & Str, const CHEdge & edge) {
+		Str << (Edge)edge << ' ' << edge.child1 << ' ' << edge.child2;
+		return Str;
+	}
+};
 class Graph
 {
 private:
@@ -63,6 +82,12 @@ public:
 		Str << "offset: " << graph.offset.size() << std::endl;
 		return Str;
 	}
+};
+
+class CHGraph : public Graph {
+public:
+	std::vector<CHNode> nodes;
+	std::vector<CHEdge> edges;
 };
 
 

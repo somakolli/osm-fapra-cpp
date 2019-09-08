@@ -24,11 +24,11 @@ osmfapra::Distance osmfapra::Dijkstra::shortestDistance(osmfapra::NodeId source,
 	// clean up
 	for(auto i = 0; i < visited.size(); ++i) {
 		if(visited[i]){
-			costs[i] = std::numeric_limits<uint32_t >::max();
+			costs[i] = std::numeric_limits<Distance>::max();
 		}
 	}
 	costs[source] = 0;
-	std::priority_queue<PQElement> queue;
+	std::priority_queue<CostNode> queue;
 	queue.emplace(source, 0);
 	while(!queue.empty()) {
 		auto currentNode = queue.top();

@@ -8,20 +8,22 @@
 #include "Graph.h"
 
 namespace osmfapra {
+class CostNode {
+public:
+	NodeId id;
+	Distance cost;
+	bool operator<(const CostNode& rhs) const {
+		return cost > rhs.cost;
+	}
+	CostNode(size_t id, size_t cost): id(id), cost(cost) {}
+};
+
 class Dijkstra {
 private:
 	Graph& graph;
 	std::vector<Distance> costs;
 	std::vector<bool> visited;
-	class PQElement {
-	public:
-		NodeId id;
-		Distance cost;
-		bool operator<(const PQElement& rhs) const {
-			return cost > rhs.cost;
-		}
-		PQElement(size_t id, size_t cost): id(id), cost(cost) {}
-	};
+
 
 public:
 	explicit Dijkstra(Graph & graph);
