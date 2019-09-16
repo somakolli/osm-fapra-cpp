@@ -9,9 +9,9 @@
 namespace osmfapra
 {
 using NodeId = int64_t;
-using Lat = float;
-using Lng = float;
-using Distance = uint64_t ;
+using Lat = double;
+using Lng = double;
+using Distance = uint32_t ;
 using Speed = int32_t;
 using MySize = uint32_t;
 using Level = uint32_t ;
@@ -67,6 +67,7 @@ public:
 	std::vector<MySize> offset;
     Graph() = default;
     ~Graph() = default;
+
 	friend std::ostream &operator<<(std::ostream & Str, const Graph & graph) {
 		for(auto node: graph.nodes) {
 			Str << node;
@@ -88,12 +89,8 @@ class CHGraph : public Graph {
 public:
 	std::vector<CHNode> nodes;
 	std::vector<CHEdge> edges;
+	NodeId getClosestNode(Lat lat, Lng lng);
 };
-
-
-
-
-
 } // namespace osmfapra
 
 

@@ -18,6 +18,7 @@ public:
 	CHDijkstra(CHGraph& graph, CHGraph& backGraph);
 	std::vector<CostNode> shortestDistance(NodeId source, CHGraph& graph);
 	osmfapra::Distance shortestDistance(NodeId source, NodeId target);
+	osmfapra::Distance shortestDistance(Lat lat1, Lng lng1, Lat lat2, Lng lng2);
 
 };
 }

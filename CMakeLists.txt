@@ -22,10 +22,13 @@ set(HEADERS
     include/Config.h include/Dijkstra.h include/CHDijkstra.h)
 
 find_package(Boost REQUIRED COMPONENTS system iostreams)
+find_package(GeographicLib 1.34 REQUIRED COMPONENTS SHARED)
+set (GeographicLib_USE_STATIC_LIBS ON)
 if(Boost_FOUND)
-    include_directories(${Boost_INCLUDE_DIRS})
+    include_directories(${Boost_INCLUDE_DIRS} ${GeographicLib_INCLUDE_DIRS})
+    add_definitions (${GeographicLib_DEFINITIONS})
     add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
-    target_link_libraries(${PROJECT_NAME} ${Boost_LIBRARIES})
+    target_link_libraries(${PROJECT_NAME} ${Boost_LIBRARIES} ${GeographicLib_LIBRARIES})
 endif()
 add_compile_options("")
 

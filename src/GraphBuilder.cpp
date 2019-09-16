@@ -14,6 +14,8 @@
 #include <boost/iostreams/device/file_descriptor.hpp>
 #include <boost/iostreams/stream.hpp>
 #include <fcntl.h>
+#include <iomanip>
+
 osmfapra::GraphBuilder::GraphBuilder(osmfapra::Graph &graph, std::string &file, osmfapra::GRAPH_FILETYPE &filetype, bool reorder, osmfapra::Config& config) :
 	file(file), filetype(filetype), reorder(reorder), config(config){
 	switch (filetype){
@@ -214,8 +216,10 @@ void osmfapra::GraphBuilder::buildChFmiGraph(CHGraph& graph) {
 			uint64_t osmId;
 			uint32_t type;
 			uint32_t i = numberOfNodes + 1;
+			double lat;
 			graph.nodes.reserve(numberOfNodes);
-			while ( --i > 0 && in >> node.id >> osmId >> node.lat >>  node.lng >> type >> node.level) {
+			in.precision(10);
+			while ( --i > 0 && in  >> node.id >> osmId >> node.lat >>  node.lng >> type >> node.level) {
 				graph.nodes.emplace_back(node);
 			}
 			i = numberOfEdges + 1;

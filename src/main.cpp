@@ -21,9 +21,11 @@ template <typename Dijkstra>
 std::string processMessage(std::string message, Dijkstra& dijkstra) {
 	std::vector<std::string> splitMessage;
 	boost::split(splitMessage, message, [](char c){return c == ',';});
-	osmfapra::NodeId source = std::stoi(splitMessage[0]);
-	osmfapra::NodeId target = std::stoi(splitMessage[1]);
-	auto distance_int = dijkstra.shortestDistance(source, target);
+	osmfapra::Lat lat1 = std::stod(splitMessage[0]);
+	osmfapra::Lng lng1 = std::stod(splitMessage[1]);
+	osmfapra::Lat lat2 = std::stod(splitMessage[2]);
+	osmfapra::Lng lng2 = std::stod(splitMessage[3]);
+	auto distance_int = dijkstra.shortestDistance(lat1, lng1, lat2, lng2);
 	std::string distance{std::to_string(distance_int)};
 	return distance;
 }
@@ -178,7 +180,7 @@ void startLoop(DijkstraT& dijkstra) {
 					//of the data read
 					buffer[valread] = '\0';
 					std::string newMessage{buffer};
-					std::cout << "message received: " << newMessage << '\n';
+					// std::cout << "message received: " << newMessage << '\n';
 					const char* messageCharPointer = processMessage(newMessage, dijkstra).c_str();
 					send(sd, messageCharPointer, strlen(messageCharPointer), 0);
 				}

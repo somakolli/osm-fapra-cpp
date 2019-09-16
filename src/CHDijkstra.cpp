@@ -72,3 +72,10 @@ osmfapra::Distance osmfapra::CHDijkstra::shortestDistance(osmfapra::NodeId sourc
 	}
 	return c;
 }
+
+osmfapra::Distance
+osmfapra::CHDijkstra::shortestDistance(osmfapra::Lat lat1, osmfapra::Lng lng1, osmfapra::Lat lat2, osmfapra::Lng lng2) {
+	NodeId source = graph.getClosestNode(lat1, lng1);
+	NodeId target = graph.getClosestNode(lat2, lng2);
+	return shortestDistance(source, target);
+}
