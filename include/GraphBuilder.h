@@ -12,6 +12,9 @@
 #include <map>
 #include <vector>
 #include <osmpbf/include/osmpbf/primitiveblockinputadaptor.h>
+#include <algorithm>
+#include "map"
+#include "set"
 
 namespace osmfapra{
 
@@ -34,18 +37,30 @@ private:
 	std::string& file;
 	GRAPH_FILETYPE& filetype;
 	bool reorder = false;
-	std::vector<OsmId> collectedOsmNodes;
+	std::set<NodeId> nodeIdSet;
+	std::set<EdgeId> edgeIdSet;
+	std::map<OsmId, NodeId> osmMyIdMap;
+	size_t edgesSize = 0;
 	void buildPbfGraph(Graph& graph);
 	void preParseEdges(Graph& graph);
 	void parseNodes(Graph& graph);
-	static void parseNodesBlock(Graph& graph,osmpbf::PrimitiveBlockInputAdaptor& pbi, std::unordered_set<uint32_t >& relevantNodes);
+	void parseEdges(Graph& graph);
+	void parseEdgesBlock(Graph &graph, osmpbf::PrimitiveBlockInputAdaptor &pbi);
 	uint32_t findMaxNodeId();
 	void reorderWithGrid(Graph& graph);
 	void buildFmiGraph(Graph& graph);
 	void parseFmiGraph(Graph& graph);
-	template <typename Graph>
-	void buildOffset(Graph& graph);
+	Distance calcDistance(LatLng source, LatLng target);
+	void sortEdges(Graph& graph);
 public:
+	template <typename Graph>
+	static void sortNodes(Graph& graph){
+		std::sort(graph.nodes.begin(), graph.nodes.end(), [](auto edge1, auto edge2) -> bool{
+			return edge1.id < edge2.id;
+		});
+	}
+	template <typename Graph>
+	static void buildOffset(Graph& graph);
 
 	std::unordered_set<OsmId> relevantNodes;
 	GraphBuilder(Graph& graph, std::string& file, GRAPH_FILETYPE& filetype, bool reorder, Config& config);
@@ -54,7 +69,33 @@ public:
 
 	void buildChFmiGraph(CHGraph& graph);
 
-	void buildBackGraph(CHGraph& graph, CHGraph& backGraph);
+	template <typename Graph1, typename Graph2>
+	static void buildBackGraph(const Graph1& graph, Graph2& backGraph) {
+		backGraph.edges.clear();
+		backGraph.nodes.clear();
+		backGraph.offset.clear();
+		backGraph.nodes.reserve(graph.nodes.size());
+		for(auto node : graph.nodes) {
+			backGraph.nodes.emplace_back(node);
+		}
+		backGraph.edges.reserve(graph.edges.size());
+		for(auto edge: graph.edges) {
+			auto source = edge.source;
+			edge.source = edge.target;
+			edge.target = source;
+			backGraph.edges.emplace_back(edge);
+		}
+
+		std::sort(backGraph.edges.begin(), backGraph.edges.end(), [](auto edge1, auto edge2) -> bool{
+			return (edge1.source == edge2.source) ? edge1.target <= edge2.target : edge1.source < edge2.source;
+		});
+	}
+	template <typename Graph>
+	static void buildIndexMap(Graph& graph) {
+		graph.indexMap.resize(graph.nodes[graph.nodes.size()-1].id + 1);
+		for(int i = 0; i < graph.nodes.size(); ++i)
+			graph.indexMap[graph.nodes[i].id] = i;
+	}
 };
 
 }

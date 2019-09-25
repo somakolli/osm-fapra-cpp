@@ -1,9 +1,5 @@
 #include <iostream>
-#include <Graph.h>
-#include <GraphBuilder.h>
-#include <Dijkstra.h>
 #include <chrono>
-#include <CHDijkstra.h>
 #include <unistd.h>
 #include <stdio.h>
 #include <sys/socket.h>
@@ -12,6 +8,11 @@
 #include <string.h>
 #include <boost/algorithm/string.hpp>
 #include <arpa/inet.h>
+#include "../include/Graph.h"
+#include "../include/GraphBuilder.h"
+#include "../include/CHDijkstra.h"
+#include "../include/CHConstructor.h"
+#include "cstdlib"
 
 #define PORT 4301
 #pragma clang diagnostic push
@@ -19,28 +20,48 @@
 
 template <typename Dijkstra>
 std::string processMessage(std::string message, Dijkstra& dijkstra) {
+	std::cout << "recieved message: " << message << '\n';
 	std::vector<std::string> splitMessage;
 	boost::split(splitMessage, message, [](char c){return c == ',';});
-	osmfapra::Lat lat1 = std::stod(splitMessage[0]);
-	osmfapra::Lng lng1 = std::stod(splitMessage[1]);
-	osmfapra::Lat lat2 = std::stod(splitMessage[2]);
-	osmfapra::Lng lng2 = std::stod(splitMessage[3]);
-	auto distance_int = dijkstra.shortestDistance(lat1, lng1, lat2, lng2);
-	std::string distance{std::to_string(distance_int)};
+	size_t sourcesSize = std::stoi(splitMessage[0]);
+	size_t targetsSize = std::stoi(splitMessage[1]);
+	std::vector<osmfapra::LatLng> sources;
+	std::vector<osmfapra::LatLng> targets;
+	for(auto i = 2; i < sourcesSize+2; i+=2) {
+		osmfapra::Lat lat2 = std::stod(splitMessage[i]);
+		osmfapra::Lng lng2 = std::stod(splitMessage[i+1]);
+		sources.emplace_back(osmfapra::LatLng{lat2,lng2});
+	}
+	for(auto i = sourcesSize+2; i < targetsSize+sourcesSize+2; i+=2) {
+		osmfapra::Lat lat2 = std::stod(splitMessage[i]);
+		osmfapra::Lng lng2 = std::stod(splitMessage[i+1]);
+		targets.emplace_back(osmfapra::LatLng{lat2,lng2});
+	}
+	auto distances = dijkstra.multiSourceMultiTarget(sources, targets);
+	std::string distance;
+	std::cout << sources.size() << std::endl;
+	for(auto i = 0; i < distances.size(); i++) {
+		distance += std::to_string(distances[i]);
+		if(i != distances.size()-1) {
+			distance += ',';
+		}
+	}
+	std::cout << "test" << std::endl;
+	std::cout << "distances: " << distance << std::endl;
 	return distance;
 }
 
 // source: https://www.geeksforgeeks.org/socket-programming-in-cc-handling-multiple-clients-on-server-without-multi-threading/
 template <typename DijkstraT>
-void startLoop(DijkstraT& dijkstra) {
+void startServerLoop(DijkstraT &dijkstra) {
 
 	int opt = true;
 	int master_socket , addrlen , new_socket , client_socket[30] ,
 			max_clients = 30 , activity, i , valread , sd;
 	int max_sd;
 	struct sockaddr_in address;
-
-	char buffer[1025];  //data buffer of 1K
+	auto bufferSize = 10000;
+	char buffer[bufferSize];  //data buffer of 1K
 
 	//set of socket descriptors
 	fd_set readfds;
@@ -160,7 +181,7 @@ void startLoop(DijkstraT& dijkstra) {
 			{
 				//Check if it was for closing , and also read the
 				//incoming message
-				if ((valread = read( sd , buffer, 1024)) == 0)
+				if ((valread = read( sd , buffer, bufferSize-1)) == 0)
 				{
 					//Somebody disconnected , get his details and print
 					getpeername(sd , (struct sockaddr*)&address , \
@@ -172,17 +193,15 @@ void startLoop(DijkstraT& dijkstra) {
 					close( sd );
 					client_socket[i] = 0;
 				}
-
-					//Echo back the message that came in
 				else
 				{
 					//set the string terminating NULL byte on the end
 					//of the data read
 					buffer[valread] = '\0';
 					std::string newMessage{buffer};
-					// std::cout << "message received: " << newMessage << '\n';
-					const char* messageCharPointer = processMessage(newMessage, dijkstra).c_str();
-					send(sd, messageCharPointer, strlen(messageCharPointer), 0);
+					auto response = processMessage(newMessage, dijkstra);
+					const char* messageCharPointer = response.c_str();
+					send(sd, messageCharPointer, response.size(), 0);
 				}
 			}
 		}
@@ -190,12 +209,60 @@ void startLoop(DijkstraT& dijkstra) {
 }
 #pragma clang diagnostic pop
 
+template <typename DijkstraT, typename CHDijkstra>
+void startCliLoop(DijkstraT &dijkstra, CHDijkstra &chDijkstra, size_t graphSize, bool ch) {
+	for(int i = 0; i < graphSize && false; ++i) {
+		for(int j = 0; j < graphSize; ++j) {
+			auto start = std::chrono::steady_clock::now();
+			int64_t dijkstraD = dijkstra.shortestDistance(i, j);
+			auto end = std::chrono::steady_clock::now();
+			auto start2 = std::chrono::steady_clock::now();
+			int64_t chDijkstraD = chDijkstra.shortestDistance(i, j);
+			auto end2 = std::chrono::steady_clock::now();
+			if(dijkstraD == chDijkstraD) {
+				std::cout << "distances didnt match for " << i << " " << j << " distance: " << dijkstraD << " chdistance: " << chDijkstraD <<  std::endl;
+				std::cout << "Dijkstra took : "
+						  << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()
+						  << " ms" << std::endl;
+				std::cout << "chDijkstra : "
+						  << std::chrono::duration_cast<std::chrono::milliseconds>(end2 - start2).count()
+						  << " ms" << std::endl;
+			}
+		}
+	}
+	while(true) {
+		std::cout << "enter source" << '\n';
+		osmfapra::NodeId source;
+		std::cin >> source;
+		std::cout << "enter target" << '\n';
+		osmfapra::NodeId target;
+		std::cin >> target;
+		auto start = std::chrono::steady_clock::now();
+		std::cout << "Distance: " << dijkstra.shortestDistance(source, target) << '\n';
+		auto end = std::chrono::steady_clock::now();
+		std::cout << "Dijkstra took : "
+				  << std::chrono::duration_cast<std::chrono::microseconds>(end - start).count()
+				  << " ms" << std::endl;
+		if(ch) {
+			auto start2 = std::chrono::steady_clock::now();
+			std::cout << "ch Distance: " << chDijkstra.shortestDistance(source, target) << '\n';
+			auto end2 = std::chrono::steady_clock::now();
+			std::cout << "chDijkstra : "
+					  << std::chrono::duration_cast<std::chrono::microseconds>(end2 - start2).count()
+					  << " ms" << std::endl;
+		}
+	}
+}
+
 
 int main(int argc, char *argv[]) {
 	std::string filename;
 	std::string configFileName;
 	osmfapra::GRAPH_FILETYPE filetype;
+	bool print = false;
 	bool reorder = false;
+	bool cli  = false;
+	bool ch = true;
 	uint16_t i = 1;
 	while(i < argc) {
 		std::string option = argv[i];
@@ -221,6 +288,15 @@ int main(int argc, char *argv[]) {
 		} else if (option == "-gridReorder") {
 			i+=1;
 			reorder = true;
+		} else if (option == "-cli") {
+			cli = true;
+			i+=1;
+		} else if (option == "-print") {
+			print = true;
+			i+=1;
+		}else if (option == "-noCh") {
+			ch = false;
+			i+=1;
 		}
 		else {
 			std::cout << "Unrecognized commands!" << std::endl;
@@ -229,14 +305,22 @@ int main(int argc, char *argv[]) {
 	}
 
 	osmfapra::Config config{configFileName};
-	if(filetype == osmfapra::GRAPH_FILETYPE::CHFMI) {
-		osmfapra::CHGraph chGraph;
-		osmfapra::CHGraph backGraph;
-		osmfapra::GraphBuilder graphBuilder(chGraph, backGraph, filename, filetype, reorder, config);
-		std::cout << "ready\n";
-		osmfapra::CHDijkstra chDijkstra(chGraph, backGraph);
-		startLoop(chDijkstra);
-	}
+	osmfapra::Graph graph;
+	osmfapra::GraphBuilder graphBuilder(graph, filename, filetype, reorder, config);
+	osmfapra::CHGraph chGraph;
+	osmfapra::CHGraph backGraph;
+	if(ch)
+		osmfapra::CHConstructor chConstructor(graph, chGraph, backGraph);
+	std::cout << "ch constructed!" << std::endl;
+	osmfapra::Graph graph1;
+	osmfapra::GraphBuilder graphBuilder1(graph1, filename, filetype, reorder, config);
+	osmfapra::Dijkstra dijkstra(graph1);
+	if(print)
+		std::cout << graph << std::endl;
+	osmfapra::CHDijkstra chDijkstra(chGraph, backGraph);
+	if(cli)
+		startCliLoop(dijkstra, chDijkstra, graph.nodes.size(), ch);
+	startServerLoop(dijkstra);
 	return 0;
 }
 

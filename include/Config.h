@@ -6,6 +6,8 @@
 #define OSM_FAPRA_CONFIG_H
 #include <string>
 #include <vector>
+#include <iostream>
+
 namespace osmfapra{
 class Config {
 private:
@@ -16,17 +18,20 @@ private:
 		uint8_t maxSpeed;
 	};
 	std::vector<HighwayInfo> highwayInfos;
-	template <typename Iter>
-	Iter findHighway(std::string highwayValue);
-	template <typename Iter>
-	Iter findHighway(std::uint8_t highwayId);
 
 public:
 	explicit Config(const std::string& file);
-	template <typename highway>
-	uint8_t getMaxSpeed(highway highwayValue);
-	template <typename highway>
-	bool isValidHighway(highway highwayValue);
+
+	bool isValidHighway(const std::string& highwayValue){
+		bool isValid = false;
+		for(const auto &highwayInfo: highwayInfos) {
+			if(highwayInfo.highwayValue == highwayValue) {
+				isValid = true;
+				break;
+			}
+		}
+		return isValid;
+	};
 };
 }
 

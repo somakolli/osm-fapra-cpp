@@ -5,21 +5,27 @@
 #ifndef OSM_FAPRA_CHDIJKSTRA_H
 #define OSM_FAPRA_CHDIJKSTRA_H
 
-#include <Dijkstra.h>
 #include <set>
+#include "Graph.h"
+#include "Dijkstra.h"
+
 namespace osmfapra {
 class CHDijkstra {
 private:
-	std::vector<bool> visited;
+	std::vector<NodeId> visited;
 	std::vector<Distance> costs;
+	Distance findDistance(const std::vector<osmfapra::CostNode> &upwardVec, const std::vector<osmfapra::CostNode> &downwardVec);
 public:
 	CHGraph& graph;
 	CHGraph& backGraph;
 	CHDijkstra(CHGraph& graph, CHGraph& backGraph);
 	std::vector<CostNode> shortestDistance(NodeId source, CHGraph& graph);
 	osmfapra::Distance shortestDistance(NodeId source, NodeId target);
-	osmfapra::Distance shortestDistance(Lat lat1, Lng lng1, Lat lat2, Lng lng2);
-
+	osmfapra::Distance shortestDistance(LatLng source , LatLng target);
+	std::vector<osmfapra::Distance> shortestDistance(const LatLng& source , std::vector<LatLng>& targets);
+	std::vector<osmfapra::Distance> multiSourceMultiTarget(const std::vector<NodeId>& sources, const std::vector<NodeId>& targets);
+	std::vector<osmfapra::Distance> multiSourceMultiTarget(const std::vector<LatLng>& sources, const std::vector<LatLng>& targets);
+	std::vector<NodeId> shortestPath(NodeId source, NodeId target);
 };
 }
 

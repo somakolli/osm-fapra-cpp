@@ -15,17 +15,18 @@ namespace osmfapra {
 template< typename GridNode>
 class Grid {
 	using GridKey = std::pair<Lat, Lng>;
-	const std::vector<GridNode> nodes;
+	std::vector<GridNode> nodes;
 	int gridSizeY;
 	int gridSizeX;
 public:
 	std::map<GridKey, std::vector<GridNode>> grid;
 	Grid(const std::vector<GridNode> nodes, int gridSizeX, int gridSizeY): nodes(nodes), gridSizeX(gridSizeX), gridSizeY(gridSizeY) { };
 	void buildGrid() {
-		auto divLat = 180 / gridSizeY;
-		auto divLng = 360 / gridSizeX;
+		double divLat = 180.0f / static_cast<float>(gridSizeY);
+		std::cout << 180.0f << "/" << gridSizeY << " = " << 180.0f / static_cast<float>(gridSizeX) << std::endl;
+		double divLng = 360.0f / static_cast<float>(gridSizeX);
 		for (const auto& node : nodes) {
-			auto latPositionInGrid = floor(node.lat / divLat);
+			auto latPositionInGrid = floor(node.lat/ divLat);
 			auto lngPositionInGrid = floor(node.lng / divLng);
 			auto latPair = std::make_pair(latPositionInGrid, lngPositionInGrid);
 			grid[latPair].emplace_back(std::move(node));
