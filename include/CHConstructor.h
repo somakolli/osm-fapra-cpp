@@ -16,47 +16,41 @@
 namespace osmfapra {
 constexpr Distance MAX_DISTANCE = std::numeric_limits<Distance>::max();
 class CHConstructor {
+using Children = std::pair<EdgeId, EdgeId>;
 private:
 	CHGraph& backGraph;
 	Graph& inputGraph;
 	CHGraph& outputGraph;
 	std::vector<NodeId> visited;
 	std::vector<Distance> costs;
-	std::vector<Distance> costsWithoutV;
+	uint32_t rounds;
 public:
-	CHConstructor(Graph &inputGraph, CHGraph &outputGraph, CHGraph &backGraph);
+	CHConstructor(Graph &inputGraph, CHGraph &outputGraph, CHGraph &backGraph, uint32_t rounds);
 
 private:
 	class EdgeDifferenceNode {
 	public:
 		NodeId id;
-		int64_t edgeDifference;
+		double edgeDifference;
 
 		bool operator<(const EdgeDifferenceNode& rhs) const {
 			return edgeDifference > rhs.edgeDifference;
 		}
-		EdgeDifferenceNode(NodeId id, int64_t edgeDifference): id(id), edgeDifference(edgeDifference) {}
+		EdgeDifferenceNode(NodeId id, double edgeDifference): id(id), edgeDifference(edgeDifference) {}
 	};
 	void constructCh();
 	template <typename Graph>
-	void buildIndependentSet(const Graph& graph, size_t count, std::vector<NodeId>& independentSet, std::size_t initNodeSize, Graph& backgraph);
-	template <typename Graph, typename DijkstraGraph>
-	int64_t computeEdgeDifference(const Graph& graph, const Graph& backGraph, NodeId node, Dijkstra<DijkstraGraph>& dijkstra,
-								  std::vector<osmfapra::EdgeId >& edgesToBeDeleted, std::vector<osmfapra::CHEdge>& edgesToBeAdded);
+	void buildIndependentSet(const Graph& graph, size_t count, std::vector<NodeId>& independentSet, std::size_t initNodeSize, const Graph& backgraph, NodeId firstNode);
 	template <typename Graph>
-	int64_t getShortCuts(const Graph& graph, const Graph& backGraph, NodeId v, std::vector<osmfapra::CHEdge>& edgesToBeAdded);
+	double getAverageEdgeDifference(const Graph &graph, const Graph& backGraph, size_t initNodeSize, osmfapra::NodeId startNode);
+	template <typename Graph>
+	int64_t getShortCuts(const Graph& graph, const Graph& myBackGraph, NodeId v, std::vector<osmfapra::CHEdgeWithId>* edgesToBeAdded = NULL);
 	template <typename Graph>
 	Distance calcDistanceLimit(const Graph& graph, const Graph& backGraph, NodeId source, NodeId v, NodeId target);
-	void shortestDistance(const Graph& graph, std::vector<Distance>& myCosts, bool ignore, Distance radius, NodeId source, NodeId v, std::set<NodeId>& targets);
+	void shortestDistance(const Graph& graph, std::vector<Distance>& myCosts, bool ignore, Distance radius, NodeId source, NodeId v, std::set<NodeId>& targets, std::vector<NodeId>& visitedWithoutV);
 
 private:
-	template <typename T, typename IndexType>
-	void removeFromVec(std::vector<T>& vec, IndexType index) {
-		if(vec.empty())
-			return;
-		vec[index] = vec.back();
-		vec.pop_back();
-	}
+
 };
 }
 

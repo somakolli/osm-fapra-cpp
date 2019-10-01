@@ -19,6 +19,7 @@ osmfapra::Distance osmfapra::Dijkstra<Graph>::shortestDistance(osmfapra::NodeId 
 	for(auto nodeId: visited) {
 		costs[nodeId] = std::numeric_limits<Distance>::max();
 	}
+
 	visited.emplace_back(source);
 	visited.emplace_back(target);
 	previousNode.clear();
@@ -64,12 +65,12 @@ std::vector<osmfapra::Distance> osmfapra::Dijkstra<Graph>::shortestDistance(osmf
 }
 
 template <typename Graph>
-std::vector<osmfapra::NodeId> osmfapra::Dijkstra<Graph>::shortestPath(NodeId source, NodeId target) {
+std::vector<osmfapra::NodeId> osmfapra::Dijkstra<Graph>::shortestPath(NodeId source, NodeId target, const std::vector<NodeId>& myPreviousNode) {
 	std::vector<NodeId> path;
 	path.emplace_back(target);
 	auto currentNode = target;
-	while(previousNode[currentNode] != source) {
-		currentNode = previousNode[currentNode];
+	while(myPreviousNode[currentNode] != source) {
+		currentNode = myPreviousNode[currentNode];
 		path.emplace_back(currentNode);
 	}
 	path.emplace_back(source);
@@ -102,7 +103,17 @@ osmfapra::Dijkstra<Graph>::multiSourceMultiTarget(const std::vector<osmfapra::La
 												  const std::vector<osmfapra::LatLng> &targets) {
 	return std::vector<osmfapra::Distance>();
 }
+template<typename Graph>
+std::vector<osmfapra::LatLng> osmfapra::Dijkstra<Graph>::shortestPath(LatLng source, LatLng target) {
+	std::vector<LatLng> path;
 
+	const auto& idPath = shortestPath(Graph::getClosestNode(graph, source), Graph::getClosestNode(graph, target), previousNode);
+	for(const auto id: idPath){
+		const auto& node = graph.nodes[id];
+		path.emplace_back(LatLng{node.lat, node.lng});
+	}
+	return path;
+}
 
 template class osmfapra::Dijkstra<osmfapra::CHGraph>;
 template class osmfapra::Dijkstra<osmfapra::Graph>;

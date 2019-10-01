@@ -17,28 +17,6 @@
 #include "../include/Grid.h"
 #include <GeographicLib/Geodesic.hpp>
 
-osmfapra::GraphBuilder::GraphBuilder(osmfapra::Graph &graph, std::string &file, osmfapra::GRAPH_FILETYPE &filetype, bool reorder, osmfapra::Config& config) :
-	file(file), filetype(filetype), reorder(reorder), config(config){
-	switch (filetype){
-		case osmfapra::GRAPH_FILETYPE::PBF:
-			buildPbfGraph(graph);
-			break;
-		case osmfapra::GRAPH_FILETYPE::FMI:
-			buildFmiGraph(graph);
-			break;
-		case osmfapra::GRAPH_FILETYPE::CHFMI:
-			return;
-	}
-	buildIndexMap(graph);
-	buildOffset(graph);
-	if(reorder) {
-		reorderWithGrid(graph);
-	}
-	for(int i = 0; i< graph.indexMap.size(); i++)
-		std::cout << i << ":" << graph.indexMap[i] << std::endl;
-	std::cout << "Build offset" << std::endl;
-}
-
 auto osmfapra::GraphBuilder::buildPbfGraph(Graph& graph) -> void {
 	preParseEdges(graph);
 	std::cout << "Preparsed edges!" << std::endl;
@@ -50,6 +28,9 @@ auto osmfapra::GraphBuilder::buildPbfGraph(Graph& graph) -> void {
 	sortEdges(graph);
 	std::cout << "Sorted Edges" << std::endl;
 	std::cout << "edges count: " << graph.edges.size() << std::endl;
+	for(auto& edge: graph.edges) {
+		std::cout << edge << std::endl;
+	}
 }
 
 void osmfapra::GraphBuilder::parseEdgesBlock(Graph &graph, osmpbf::PrimitiveBlockInputAdaptor &pbi)  {
@@ -71,7 +52,7 @@ void osmfapra::GraphBuilder::parseEdgesBlock(Graph &graph, osmpbf::PrimitiveBloc
 				continue;
 			auto highwayValue = way.valueByKey("highway");
 			auto junctionValue = way.valueByKey("junction");
-			if(!config.isValidHighway(highwayValue)) {
+			if(!config->isValidHighway(highwayValue)) {
 				continue;
 			}
 			oneWay = (onewayValue == "true" || onewayValue == "yes" || onewayValue == "1" || highwayValue == "motorway" || junctionValue == "roundabout") && highwayValue != "no";
@@ -79,14 +60,23 @@ void osmfapra::GraphBuilder::parseEdgesBlock(Graph &graph, osmpbf::PrimitiveBloc
 			auto nextRefIt = refIt;
 			++nextRefIt;
 			while (nextRefIt != way.refEnd()){
+				if(*refIt==*nextRefIt) {
+					std::cout << "not adding loop" << std::endl;
+					++refIt;
+					++nextRefIt;
+					continue;
+				}
+
 				relevantNodes.emplace(*refIt);
 				relevantNodes.emplace(*nextRefIt);
+
 				if(edgeIdSet.find(EdgeId(*refIt, *nextRefIt))==edgeIdSet.end()){
-					graph.edges.emplace_back(Edge(*refIt, *nextRefIt, 0, 1));
+					graph.edges.emplace_back(Edge(*refIt, *nextRefIt, 0));
 					edgeIdSet.emplace(*refIt, *nextRefIt);
 				}
 				if(!oneWay && edgeIdSet.find(EdgeId(*nextRefIt, *refIt))==edgeIdSet.end()) {
-					graph.edges.emplace_back(Edge(*nextRefIt, *refIt, 0, 1));
+
+					graph.edges.emplace_back(Edge(*nextRefIt, *refIt, 0));
 					edgeIdSet.emplace(*nextRefIt, *refIt);
 				}
 				++refIt;
@@ -138,7 +128,7 @@ void osmfapra::GraphBuilder::parseEdges(osmfapra::Graph &graph) {
 	for(auto& edge: graph.edges){
 		const auto& source = graph.nodes[osmMyIdMap[edge.source]];
 		const auto& target = graph.nodes[osmMyIdMap[edge.target]];
-		edge = Edge(source.id, target.id, calcDistance(LatLng(source.lat, source.lng), LatLng(target.lat, target.lng)), 1);
+		edge = Edge(source.id, target.id, calcDistance(LatLng(source.lat, source.lng), LatLng(target.lat, target.lng)));
 	}
 }
 
@@ -173,24 +163,6 @@ void osmfapra::GraphBuilder::buildFmiGraph(Graph& graph) {
 	parseFmiGraph(graph);
 }
 
-uint32_t osmfapra::GraphBuilder::findMaxNodeId() {
-	osmpbf::OSMFileIn inFile(file);
-	if (!inFile.open()) {
-		throw std::exception();
-	}
-	osmpbf::PrimitiveBlockInputAdaptor pbi;
-	uint32_t i = 0;
-	while (inFile.parseNextBlock(pbi)) {
-		if(pbi.nodesSize()) {
-			for(auto node = pbi.getNodeStream(); !node.isNull(); node.next()) {
-				if(node.id() > i)
-					i = node.id();
-			}
-		}
-	}
-	return i;
-}
-
 namespace io = boost::iostreams;
 void osmfapra::GraphBuilder::parseFmiGraph(Graph& graph) {
 	uint32_t numberOfNodes{};
@@ -210,47 +182,19 @@ void osmfapra::GraphBuilder::parseFmiGraph(Graph& graph) {
 			Node node{};
 			uint64_t osmId;
 			uint32_t type;
+			uint32_t maxSpeed;
 			uint32_t i = numberOfNodes + 1;
 			while ( --i > 0 && in >> node.id >> osmId >> node.lat >> node.lng >> type) {
 				graph.nodes.emplace_back(node);
 			}
 			i = numberOfEdges + 1;
 			Edge edge{};
-			while (--i > 0 && in >> edge.source >> edge.target >> edge.distance >> type >> edge.maxSpeed) {
+			while (--i > 0 && in >> edge.source >> edge.target >> edge.distance >> type >> maxSpeed) {
 				graph.edges.emplace_back(edge);
 			}
 			fdDevice.close();
 		}
 	}
-}
-template <typename Graph>
-void osmfapra::GraphBuilder::buildOffset(Graph& graph) {
-	graph.offset.clear();
-	if(graph.edges.empty()  || graph.nodes.empty())
-		return;
-	auto& offset = graph.offset;
-	auto& nodes = graph.nodes;
-	auto& edges = graph.edges;
-	offset.reserve(nodes.size()+1);
-	while(offset.size() <= nodes[nodes.size()-1].id+1) {
-		offset.emplace_back(0);
-	}
-	offset[nodes[nodes.size() - 1].id] = edges.size();
-	for(int i = edges.size()-1; i >= 0; --i ){
-		offset[edges[i].source] = i;
-	}
-	for(int i = edges[0].source + 1; i < offset.size()-2; ++i) {
-
-		if(offset[i]==0) {
-			size_t j = i+1;
-			while(offset[j]==0){
-				++j;
-			}
-			offset[i] = offset[j];
-		}
-	}
-	offset[0] = 0;
-	offset[offset.size()-1] = edges.size();
 }
 
 void osmfapra::GraphBuilder::buildChFmiGraph(CHGraph& graph) {
@@ -285,7 +229,8 @@ void osmfapra::GraphBuilder::buildChFmiGraph(CHGraph& graph) {
 			CHEdge edge{};
 			NodeId child1;
 			NodeId child2;
-			while (--i > 0 && in >> edge.source >> edge.target >> edge.distance >> type >> edge.maxSpeed >> child1 >> child2) {
+			uint32_t maxSpeed;
+			while (--i > 0 && in >> edge.source >> edge.target >> edge.distance >> type >> maxSpeed >> child1 >> child2) {
 				if(edge.source == edge.target)
 					continue;
 				if(child1 == -1){
@@ -303,15 +248,6 @@ void osmfapra::GraphBuilder::buildChFmiGraph(CHGraph& graph) {
 			fdDevice.close();
 		}
 	}
-}
-
-
-osmfapra::GraphBuilder::GraphBuilder(CHGraph& graph, CHGraph& backGraph, std::string& file, GRAPH_FILETYPE& filetype, bool reorder, Config& config): file(file), filetype(filetype), reorder(reorder), config(config) {
-	std::cout << "loading file: " << file << "\n";
-	buildChFmiGraph(graph);
-	buildBackGraph(graph, backGraph);
-	buildOffset(graph);
-	buildOffset(backGraph);
 }
 
 osmfapra::Distance osmfapra::GraphBuilder::calcDistance(osmfapra::LatLng source, osmfapra::LatLng target) {

@@ -14,7 +14,8 @@ class CHDijkstra {
 private:
 	std::vector<NodeId> visited;
 	std::vector<Distance> costs;
-	Distance findDistance(const std::vector<osmfapra::CostNode> &upwardVec, const std::vector<osmfapra::CostNode> &downwardVec);
+	std::vector<NodeId> previousNode;
+	Distance findDistance(const std::vector<osmfapra::CostNode> &upwardVec, const std::vector<osmfapra::CostNode> &downwardVec, NodeId& topNode);
 public:
 	CHGraph& graph;
 	CHGraph& backGraph;
@@ -26,6 +27,7 @@ public:
 	std::vector<osmfapra::Distance> multiSourceMultiTarget(const std::vector<NodeId>& sources, const std::vector<NodeId>& targets);
 	std::vector<osmfapra::Distance> multiSourceMultiTarget(const std::vector<LatLng>& sources, const std::vector<LatLng>& targets);
 	std::vector<NodeId> shortestPath(NodeId source, NodeId target);
+	std::vector<osmfapra::LatLng> shortestPath(osmfapra::LatLng source, osmfapra::LatLng target);
 };
 }
 

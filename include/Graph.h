@@ -6,6 +6,9 @@
 #include <map>
 #include <iostream>
 #include <cmath>
+#include <iomanip>
+#include "list"
+#include "stack"
 
 namespace osmfapra
 {
@@ -24,7 +27,7 @@ public:
     Lat lat;
     Lng lng;
 	friend std::ostream &operator<<(std::ostream & Str, const Node & node) {
-		Str << "id: "<< node.id <<" lat: " << node.lat << " lon: " << node.lng;
+		Str << std::setprecision(10) << "id: "<< node.id <<" lat: " << node.lat << " lon: " << node.lng;
 		return Str;
 	}
 };
@@ -44,16 +47,14 @@ public:
     NodeId source;
     NodeId target;
     Distance distance;
-    Speed maxSpeed;
-    bool deleted = false;
 
 	Edge() = default;
 
-	Edge(NodeId source, NodeId target, Distance distance, Speed maxSpeed) : source(source), target(target),
-																			distance(distance), maxSpeed(maxSpeed) {}
+	Edge(NodeId source, NodeId target, Distance distance) : source(source), target(target),
+																			distance(distance){}
 
 	friend std::ostream &operator<<(std::ostream & Str, const Edge & edge) {
-		Str << "source: " << edge.source << ' ' << "target: " << edge.target << " distance: " << edge.distance << " maxSpeed: " << edge.maxSpeed;
+		Str << "source: " << edge.source << ' ' << "target: " << edge.target << " distance: " << edge.distance;
 		return Str;
 	}
 
@@ -88,10 +89,9 @@ public:
 
 	CHEdge() : Edge() {}
 
-	CHEdge(NodeId source, NodeId target, Distance distance, Speed maxSpeed, std::optional<NodeId> child1, std::optional<NodeId> child2) : Edge(source,
+	CHEdge(NodeId source, NodeId target, Distance distance, std::optional<NodeId> child1, std::optional<NodeId> child2) : Edge(source,
 																												 target,
-																												 distance,
-																												 maxSpeed),
+																												 distance),
 																											child1(child1),
 																											child2(child2) {}
 
@@ -104,9 +104,18 @@ public:
 	}
 
 	friend std::ostream &operator<<(std::ostream & Str, const CHEdge & edge) {
-		Str << (Edge)edge << " child1: " << edge.child1.value_or(0) << " child2: " << edge.child2.value_or(0);
+		Str << (Edge)edge << " child1: " << edge.child1.value_or(-1) << " child2: " << edge.child2.value_or(-1);
 		return Str;
 	}
+};
+class CHEdgeWithId: public Edge {
+public:
+	CHEdgeWithId() : Edge() {}
+	std::optional<EdgeId> childId1;
+	std::optional<EdgeId> childId2;
+
+	CHEdgeWithId(NodeId source, NodeId target, Distance distance, std::optional<EdgeId> childId1,
+				 std::optional<EdgeId> childId2);
 };
 class Graph
 {
@@ -175,6 +184,40 @@ public:
 		Str << "edges: " << graph.edges.size() << std::endl;
 		Str << "offset: " << graph.offset.size() << std::endl;
 		return Str;
+	}
+	std::vector<NodeId> getPathFromShortcut(CHEdge shortcut) {
+		std::vector<NodeId> path;
+		path.emplace_back(shortcut.source);
+		if(!shortcut.child2.has_value()) {
+			//std::cout << "is not shortcut" << std::endl;
+			path.emplace_back(shortcut.source);
+			path.emplace_back(shortcut.target);
+			return path;
+		}
+		//std::cout << "found shortcut" << std::endl;
+		std::stack<uint32_t> edgesStack;
+
+		edgesStack.push(shortcut.child2.value());
+		edgesStack.push(shortcut.child1.value());
+
+		while (!edgesStack.empty()) {
+			auto& edgeIdx = edgesStack.top();
+			edgesStack.pop();
+			const auto& edge = edges[edgeIdx];
+			//std::cout << "edge from stack: " << edge << std::endl;
+			//std::cout << "source: " << nodes[edge.source] << std::endl;
+			//std::cout << "target: " << nodes[edge.target] << std::endl;
+			if(edge.child1.has_value()) {
+				//std::cout << "is shortcut" << std::endl;
+
+				edgesStack.push(edge.child2.value());
+				edgesStack.push(edge.child1.value());
+			} else {
+				//std::cout << "is not shortcut" << std::endl;
+				path.emplace_back(edge.target);
+			}
+		}
+		return path;
 	}
 };
 } // namespace osmfapra

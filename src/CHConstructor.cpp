@@ -14,15 +14,13 @@
 #define function Print(string) = std::cout << string << '\n'
 #define var DEBUG = 0;
 
-osmfapra::CHConstructor::CHConstructor(osmfapra::Graph &inputGraph, osmfapra::CHGraph &outputGraph, CHGraph &backGraph) : inputGraph(
-		inputGraph), outputGraph(outputGraph), backGraph(backGraph) {
+osmfapra::CHConstructor::CHConstructor(osmfapra::Graph &inputGraph, osmfapra::CHGraph &outputGraph, CHGraph &backGraph, uint32_t rounds) : inputGraph(
+		inputGraph), outputGraph(outputGraph), backGraph(backGraph), rounds(rounds) {
 	costs.reserve(inputGraph.nodes.size());
 	while(costs.size() <= inputGraph.nodes.size()) {
 		costs.emplace_back(MAX_DISTANCE);
-		costsWithoutV.emplace_back(MAX_DISTANCE);
 	}
 	constructCh();
-	std::cout << "ch constructed!" << std::endl;
 }
 
 void osmfapra::CHConstructor::constructCh() {
@@ -32,40 +30,66 @@ void osmfapra::CHConstructor::constructCh() {
 	GraphBuilder::buildOffset(inputGraph);
 	GraphBuilder::buildOffset(myBackGraph);
 	size_t initNodeSize = inputGraph.nodes.size();
+	size_t initEdgeSize = inputGraph.edges.size();
 	Level l = 0;
-	std::set<EdgeId > edgesAdded;
+	std::map<EdgeId, CHEdgeWithId> allEdgesAdded;
+	std::map<EdgeId, uint32_t> edgeToEdgeIndexMap;
 	while(!inputGraph.nodes.empty()) {
-		std::cout << initNodeSize - inputGraph.nodes.size() << "/" << initNodeSize << std::endl;
+		std::cout << "inputgraph edges size: " << inputGraph.edges.size() << std::endl;
+		std::cout << "nodes contracted: " <<  initNodeSize - inputGraph.nodes.size() << "/" << initNodeSize << std::endl;
+		std::cout << "Edges added: " << allEdgesAdded.size() << "/" << initEdgeSize << std::endl;
+		std::vector<EdgeDifferenceNode> nodeMeanEdgeDifferenceVector;
+		NodeId i = 0;
+		std::srand(time(0));
+		while(i < rounds){
+			NodeId id = std::rand() % inputGraph.nodes.size();
+			std::cout << "round: " << i << std::endl;
+			nodeMeanEdgeDifferenceVector.emplace_back(id, getAverageEdgeDifference(inputGraph, myBackGraph, initNodeSize, id));
+			++i;
+		}
+		NodeId bestStartNode = 0;
+		double lowestEdgeDifference = std::numeric_limits<double >::max();
+		for(const auto& edgeDifferenceNode: nodeMeanEdgeDifferenceVector) {
+			std::cout << "Node id: " << edgeDifferenceNode.id << " average edge difference: " << edgeDifferenceNode.edgeDifference << std::endl;
+			if(edgeDifferenceNode.edgeDifference < lowestEdgeDifference) {
+				bestStartNode = edgeDifferenceNode.id;
+				lowestEdgeDifference = edgeDifferenceNode.edgeDifference;
+			}
+		}
 
+		//std::cout << "Graph before contraction round: " << l << std::endl << inputGraph << std::endl;
 		std::vector<NodeId> independentSet;
-		buildIndependentSet(inputGraph, 10000, independentSet, initNodeSize, myBackGraph);
+		buildIndependentSet(inputGraph, 1000000, independentSet, initNodeSize, myBackGraph, bestStartNode);
 		std::set<osmfapra::EdgeId > allEdgesToBeDeleted;
-		std::map<std::pair<NodeId, NodeId >,osmfapra::CHEdge> allEdgesToBeAdded;
-		std::map<NodeId, std::vector<osmfapra::CHEdge>> edgesToBeAddedMap;
+		std::vector<osmfapra::CHEdgeWithId> allEdgesToBeAdded;
+		std::map<NodeId, std::vector<osmfapra::CHEdgeWithId>> edgesToBeAddedMap;
 		std::vector<NodeId > nodesToContract;
-		std::priority_queue<EdgeDifferenceNode> priorityQueue;
+		double totalEdgeDifference = 0;
 		auto start = std::chrono::steady_clock::now();
+		std::vector<EdgeDifferenceNode> edgeDifferenceVector;
 		std::vector<NodeId> nodesToBeContracted;
 		for(const auto& id : independentSet) {
-			std::vector<osmfapra::CHEdge> edgesToBeAdded;
+			std::vector<osmfapra::CHEdgeWithId> edgesToBeAdded;
 			int64_t edgeDifference = getShortCuts(inputGraph, myBackGraph, id,
-														   edgesToBeAdded);
-			priorityQueue.push(EdgeDifferenceNode(id, edgeDifference));
+														   &edgesToBeAdded);
+			totalEdgeDifference += edgeDifference;
+			edgeDifferenceVector.emplace_back(id, edgeDifference);
 			edgesToBeAddedMap[id] = edgesToBeAdded;
 		}
 		auto end = std::chrono::steady_clock::now();
 		std::cout << "Elapsed time in milliseconds : "
 				  << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()
 				  << " ms" << std::endl;
-		size_t i = 0;
-		while(!priorityQueue.empty() && i < 1000) {
-			auto pqElement = priorityQueue.top();
-			priorityQueue.pop();
-			for(const auto& edge : edgesToBeAddedMap[pqElement.id]) {
-				allEdgesToBeAdded[std::make_pair(edge.source, edge.target)] = (edge);
+		double meanEdgeDifference = totalEdgeDifference / independentSet.size();
+
+		std::cout << meanEdgeDifference << std::endl;
+		for(auto pair : edgeDifferenceVector) {
+			if(pair.edgeDifference<=meanEdgeDifference) {
+				for(const auto& edge : edgesToBeAddedMap[pair.id]) {
+					allEdgesToBeAdded.emplace_back(edge);
+				}
+				nodesToBeContracted.emplace_back(pair.id);
 			}
-			nodesToBeContracted.push_back(pqElement.id);
-			++i;
 		}
 		std::sort(nodesToBeContracted.begin(), nodesToBeContracted.end());
 		// contract nodes and gather edge indexes to be deleted
@@ -91,106 +115,109 @@ void osmfapra::CHConstructor::constructCh() {
 			}
 			Node& node = inputGraph.nodes[inputGraph.indexMap[id]];
 			outputGraph.nodes.emplace_back(CHNode{node.id, node.lat, node.lng, l});
-			removeFromVec(inputGraph.nodes, inputGraph.indexMap[id]);
+			GraphBuilder::removeFromVec(inputGraph.nodes, inputGraph.indexMap[id]);
 		}
 		std::sort(edgesToBeDeleted.begin(), edgesToBeDeleted.end());
 		for(int j = edgesToBeDeleted.size() -1 ; j >= 0; --j) {
 			Edge& edge = inputGraph.edges[edgesToBeDeleted[j]];
-			if(edgesAdded.find(std::make_pair(edge.source, edge.target)) == edgesAdded.end()) {
-				outputGraph.edges.emplace_back(
-						CHEdge{edge.source, edge.target, edge.distance, edge.maxSpeed, std::nullopt, std::nullopt});
-				edgesAdded.emplace(std::make_pair(edge.source, edge.target));
+			auto it = allEdgesAdded.find(std::make_pair(edge.source, edge.target));
+			if( it == allEdgesAdded.end() || edge.distance < it->second.distance) {
+				auto chEdge = CHEdgeWithId{edge.source, edge.target, edge.distance, std::nullopt, std::nullopt};
+				allEdgesAdded[std::make_pair(edge.source, edge.target)] = chEdge;
 			}
-			removeFromVec(inputGraph.edges, edgesToBeDeleted[j]);
+			GraphBuilder::removeFromVec(inputGraph.edges, edgesToBeDeleted[j]);
 		}
 		for(auto& edge : allEdgesToBeAdded) {
-			inputGraph.edges.emplace_back(edge.second);
-			if(edgesAdded.find(std::make_pair(edge.second.source, edge.second.target)) == edgesAdded.end()){
-				outputGraph.edges.emplace_back(edge.second);
-				edgesAdded.emplace(std::make_pair(edge.second.source, edge.second.target));
+			auto it = allEdgesAdded.find(std::make_pair(edge.source, edge.target));
+			if( it == allEdgesAdded.end() || edge.distance < it->second.distance) {
+				inputGraph.edges.emplace_back(edge);
+				allEdgesAdded[std::make_pair(edge.source, edge.target)] = edge;
 			}
 		}
 		++l;
 		std::sort(inputGraph.edges.begin(), inputGraph.edges.end(), [](auto edge1, auto edge2) -> bool{
 			return (edge1.source == edge2.source) ? edge1.target <= edge2.target : edge1.source < edge2.source;
 		});
+		start = std::chrono::steady_clock::now();
 		GraphBuilder::sortNodes(inputGraph);
-
+		end = std::chrono::steady_clock::now();
+		start = std::chrono::steady_clock::now();
 		GraphBuilder::buildOffset(inputGraph);
+		end = std::chrono::steady_clock::now();
+		std::cout << "Built offset: "
+				  << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()
+				  << " ms" << std::endl;
+		start = std::chrono::steady_clock::now();
 		GraphBuilder::buildBackGraph(inputGraph, myBackGraph);
+		end = std::chrono::steady_clock::now();
+		std::cout << "Built backGraph in: "
+				  << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()
+				  << " ms" << std::endl;
+		start = std::chrono::steady_clock::now();
 		GraphBuilder::buildOffset(myBackGraph);
+		end = std::chrono::steady_clock::now();
+		std::cout << "Built offest backGraph in: "
+				  << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()
+				  << " ms with size: "  << myBackGraph.offset.size() << std::endl;
+		start = std::chrono::steady_clock::now();
 		GraphBuilder::buildIndexMap(inputGraph);
+		end = std::chrono::steady_clock::now();
+		std::cout << "Built indexmap in: "
+				  << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()
+				  << " ms" << std::endl;
+		//std::cout << "Graph after contraction: " << std::endl << inputGraph << std::endl;
 	}
 
-	GraphBuilder::sortNodes(outputGraph);
+	visited.clear();
+	visited.shrink_to_fit();
+	costs.clear();
+	costs.shrink_to_fit();
+	inputGraph.nodes.clear();
+	inputGraph.nodes.shrink_to_fit();
+	inputGraph.edges.clear();
+	inputGraph.edges.shrink_to_fit();
+	myBackGraph.nodes.clear();
+	myBackGraph.nodes.shrink_to_fit();
+	myBackGraph.edges.clear();
+	myBackGraph.edges.shrink_to_fit();
 
+	GraphBuilder::sortNodes(outputGraph);
+	for(auto& pair: allEdgesAdded) {
+		auto& edgeWithId = pair.second;
+		outputGraph.edges.emplace_back(CHEdge(edgeWithId.source, edgeWithId.target, edgeWithId.distance, std::nullopt, std::nullopt));
+	}
+	std::cout << "Added edges to outputgraph" << std::endl;
 	std::sort(outputGraph.edges.begin(), outputGraph.edges.end(), [](auto edge1, auto edge2) -> bool{
 		return (edge1.source == edge2.source) ? edge1.target <= edge2.target : edge1.source < edge2.source;
 	});
-
+	for(int i = 0; i < outputGraph.edges.size(); ++i) {
+		edgeToEdgeIndexMap[std::make_pair(outputGraph.edges[i].source, outputGraph.edges[i].target)] = i;
+	}
+	for(auto& edge : outputGraph.edges) {
+		const auto& it = allEdgesAdded.find(std::make_pair(edge.source, edge.target));
+		if(it != allEdgesAdded.end()) {
+			auto& children = (*it).second;
+			if(children.childId2.has_value()) {
+				edge.child1 = edgeToEdgeIndexMap[children.childId1.value()];
+				edge.child2 = edgeToEdgeIndexMap[children.childId2.value()];
+			} else {
+				edge.child1 = std::nullopt;
+				edge.child2 = std::nullopt;
+			}
+		}
+	}
+	allEdgesAdded.clear();
 	GraphBuilder::buildOffset(outputGraph);
 	GraphBuilder::buildBackGraph(outputGraph, backGraph);
 	GraphBuilder::buildOffset(backGraph);
-	std::cout << outputGraph << std::endl;
-	std::cout << backGraph << std::endl;
-#if DEBUG
-	bool edgeAdded = false;
-	int i = 0;
-	for(auto& node: outputGraph.nodes) {
-		std::cout << "node: " << i << '/' << outputGraph.nodes.size() << '\n';
-		i++;
-
-		if(edgeAdded) {
-			std::sort(outputGraph.edges.begin(), outputGraph.edges.end(), [](auto edge1, auto edge2) -> bool{
-				return (edge1.source == edge2.source) ? edge1.target <= edge2.target : edge1.source < edge2.source;
-			});
-			osmfapra::GraphBuilder::buildBackGraph(outputGraph, backGraph);
-			osmfapra::GraphBuilder::buildOffset(backGraph);
-			edgeAdded = false;
-		}
-
-		std::cout << "contracting node: " << node.id << '\n';
-		std::cout << "forwardgraph \n" << outputGraph << '\n';
-		std::cout << "backgraph \n" << backGraph << '\n';
-
-		auto beginBackward = backGraph.offset[node.id];
-		auto endBackward = backGraph.offset[node.id+1];
-		for(auto i = beginBackward; i < endBackward; ++i) {
-			auto beginForward = outputGraph.offset[node.id];
-			auto endForward = outputGraph.offset[node.id+1];
-			for(auto j = beginForward; j < endForward; ++j) {
-				NodeId source = backGraph.edges[i].target;
-				NodeId target = outputGraph.edges[j].target;
-				auto distance = dijkstra.shortestDistance(source, target);
-				if(distance >= std::numeric_limits<Distance>::max() || distance == 0) {
-					break;
-				}
-				if(dijkstra.checkInPath(source, target, node.id)){
-					const auto &edge = CHEdge{source, target, distance,
-											  50, -1, -1};
-					outputGraph.edges.emplace_back(edge);
-					edgeAdded = true;
-				}
-				node.level = l;
-				l++;
-			}
-		}
-		GraphBuilder::buildOffset(outputGraph);
-	}
-#endif
-	std::cout << "ch constructed!" << std::endl;
-
 }
 
 template<typename Graph>
-void osmfapra::CHConstructor::buildIndependentSet(const Graph &graph, size_t count, std::vector<NodeId>& independentSet, std::size_t initNodeSize, Graph& backgraph) {
+void osmfapra::CHConstructor::buildIndependentSet(const Graph &graph, size_t count, std::vector<NodeId>& independentSet, std::size_t initNodeSize, const Graph& backgraph, NodeId firstNode) {
 	std::vector<bool> markedNodes(initNodeSize, false);
 	independentSet.clear();
 	independentSet.reserve(count);
-	for(size_t i = 0; i < graph.nodes.size(); ++i) {
-		if(independentSet.size() > count) {
-			break;
-		}
+	for(size_t i = firstNode; i < graph.nodes.size(); ++i) {
 		NodeId id = graph.nodes[i].id;
 		if(!markedNodes[id]) {
 			markedNodes[id] = true;
@@ -207,47 +234,12 @@ void osmfapra::CHConstructor::buildIndependentSet(const Graph &graph, size_t cou
 
 }
 
-template<typename Graph, typename DijkstraGraph>
-int64_t osmfapra::CHConstructor::computeEdgeDifference(const Graph &graph, const Graph& backGraph, osmfapra::NodeId nodeId, osmfapra::Dijkstra<DijkstraGraph>& dijkstra,
-														std::vector<osmfapra::EdgeId >& edgesToBeDeleted, std::vector<osmfapra::CHEdge>& edgesToBeAdded) {
-	auto beginBackward = backGraph.offset[nodeId];
-	auto endBackward = backGraph.offset[nodeId+1];
-	for(auto i = beginBackward; i < endBackward; ++i) {
-		auto beginForward = graph.offset[nodeId];
-		auto endForward = graph.offset[nodeId+1];
-		for(auto j = beginForward; j < endForward; ++j) {
-			auto &sourceEdge = backGraph.edges[i];
-			NodeId source = sourceEdge.target;
-			const auto &targetEdge = graph.edges[j];
-			NodeId target = targetEdge.target;
-			if(sourceEdge.deleted || targetEdge.deleted) {
-				continue;
-			}
-			auto start = std::chrono::steady_clock::now();
-			auto distance = dijkstra.shortestDistance(source, target);
-
-			if(distance >= std::numeric_limits<Distance>::max() || distance == 0) {
-				break;
-			}
-			if(dijkstra.checkInPath(source, target, nodeId)) {
-				const auto& path = dijkstra.shortestPath(source, target);
-				for (int k = path.size()-1; k > 0; --k) {
-					edgesToBeDeleted.emplace_back(path[k], path[k-1]);
-				}
-				const auto &edge = CHEdge{source, target, distance,
-										  50, -1, -1};
-				edgesToBeAdded.emplace_back(edge);
-			}
-		}
-	}
-	return edgesToBeAdded.size() - edgesToBeDeleted.size();
-}
-
 template<typename Graph>
 int64_t osmfapra::CHConstructor::getShortCuts
-(const Graph& graph, const Graph& backGraph, osmfapra::NodeId v, std::vector<osmfapra::CHEdge>& edgesToBeAdded) {
-	auto& sourceEdgesBegin = backGraph.offset[v];
-	auto& sourceEdgesEnd = backGraph.offset[v + 1];
+(const Graph& graph, const Graph& myBackGraph, osmfapra::NodeId v, std::vector<osmfapra::CHEdgeWithId>* edgesToBeAdded) {
+	uint32_t edgesToBeAddedNumber = 0;
+	auto& sourceEdgesBegin = myBackGraph.offset[v];
+	auto& sourceEdgesEnd = myBackGraph.offset[v + 1];
 	if(sourceEdgesBegin == sourceEdgesEnd) {
 		return 0;
 	}
@@ -258,6 +250,8 @@ int64_t osmfapra::CHConstructor::getShortCuts
 	Distance maxDistanceToTarget = 0;
 	for(auto j = targetEdgesBegin; j < targetEdgesEnd; ++j) {
 		auto &edgeFromVToTarget = graph.edges[j];
+		if(edgeFromVToTarget.source == edgeFromVToTarget.target)
+			continue;
 		if(edgeFromVToTarget.distance > maxDistanceToTarget)
 			maxDistanceToTarget = edgeFromVToTarget.distance;
 		targets.insert(edgeFromVToTarget.target);
@@ -267,28 +261,31 @@ int64_t osmfapra::CHConstructor::getShortCuts
 		return - (static_cast<int>(sourceEdgesEnd) - static_cast<int>(sourceEdgesBegin));
 	}
 	for(auto i = sourceEdgesBegin; i < sourceEdgesEnd; ++i) {
-
 		// clean up
-		auto &edgeFromVToSource = backGraph.edges[i];
+		auto &edgeFromVToSource = myBackGraph.edges[i];
 		if(edgeFromVToSource.source == edgeFromVToSource.target) {
 			break;
 		}
 		auto distanceFromVtoSource = edgeFromVToSource.distance;
 		auto source = edgeFromVToSource.target;
-		shortestDistance(graph, costs, true, MAX_DISTANCE, source, v, targets);
-		//shortestDistance(graph, costsWithoutV, true, MAX_DISTANCE, source, v, targets);
+		shortestDistance(graph, costs, false, maxDistanceToTarget + distanceFromVtoSource, source, v, targets, visited);
+		if(distanceFromVtoSource != costs[v])
+			continue;
 		for(auto j = targetEdgesBegin; j < targetEdgesEnd; ++j) {
 			auto& edgeFromVToTarget = graph.edges[j];
 			auto& target = edgeFromVToTarget.target;
 			auto distanceFromVToTarget = edgeFromVToTarget.distance;
-			if(costs[target] > distanceFromVtoSource + distanceFromVToTarget && costsWithoutV[target] > distanceFromVtoSource + distanceFromVToTarget){
+			if(costs[target] == distanceFromVtoSource + distanceFromVToTarget && source != target){
 				//did not find an other path from source to target so the shortcut is necessary
-				edgesToBeAdded.emplace_back(CHEdge{source, target, distanceFromVtoSource + distanceFromVToTarget, 50, std::nullopt, std::nullopt});
+				if(source == target) continue;
+				++edgesToBeAddedNumber;
+				if(edgesToBeAdded != nullptr)
+					edgesToBeAdded->emplace_back(CHEdgeWithId(source, target, distanceFromVtoSource + distanceFromVToTarget, std::make_pair(source, v), std::make_pair(v, target)));
 			}
 		}
 	}
-	// edge difference: #addedShortcuts - #indicentEdges
-	return static_cast<int>(edgesToBeAdded.size()) - (static_cast<int>(sourceEdgesEnd) - static_cast<int>(sourceEdgesBegin));
+	// edge difference: #addedShortcuts - #removedEdges
+	return edgesToBeAddedNumber - ((static_cast<int>(sourceEdgesEnd) - static_cast<int>(sourceEdgesBegin)) + targets.size());
 }
 
 template<typename Graph>
@@ -300,14 +297,14 @@ osmfapra::CHConstructor::calcDistanceLimit(const Graph &graph, const Graph &back
 
 void osmfapra::CHConstructor::shortestDistance(const osmfapra::Graph &graph, std::vector<osmfapra::Distance> &myCosts,
 											   bool ignore, osmfapra::Distance radius, osmfapra::NodeId source,
-											   osmfapra::NodeId v, std::set<NodeId>& targets) {
+											   osmfapra::NodeId v, std::set<NodeId>& targets, std::vector<NodeId>& visitedWithoutV) {
 
-	for(auto nodeId : visited) {
+	for(auto& nodeId : visitedWithoutV) {
 		myCosts[nodeId] = MAX_DISTANCE;
 	}
-	visited.clear();
+	visitedWithoutV.clear();
 	myCosts[source] = 0;
-	visited.emplace_back(source);
+	visitedWithoutV.emplace_back(source);
 	std::priority_queue<CostNode> queue;
 	queue.emplace(source, 0);
 	uint targetsSettled = 0;
@@ -323,16 +320,43 @@ void osmfapra::CHConstructor::shortestDistance(const osmfapra::Graph &graph, std
 		auto end = graph.offset[currentNode.id+1];
 		for(auto j = begin; j < end; ++j) {
 			auto& currentEdge = graph.edges[j];
-			if(currentEdge.target == v && ignore)
+			if((currentEdge.target == v && ignore))
 				continue;
 			Distance addedCost = currentNode.cost + currentEdge.distance;
 			if(myCosts[currentEdge.target] > addedCost) {
-				visited.emplace_back(currentEdge.target);
+				visitedWithoutV.emplace_back(currentEdge.target);
 				myCosts[currentEdge.target] = addedCost;
 				queue.emplace(currentEdge.target, addedCost);
 			}
 		}
 	}
+}
+
+template<typename Graph>
+double osmfapra::CHConstructor::getAverageEdgeDifference(const Graph &graph, const Graph& myBackGraph, size_t initNodeSize, osmfapra::NodeId startNode) {
+	std::vector<NodeId> independentSet;
+	buildIndependentSet(inputGraph, 1000000, independentSet, initNodeSize, myBackGraph, startNode);
+	std::set<osmfapra::EdgeId > allEdgesToBeDeleted;
+	std::map<std::pair<NodeId, NodeId >,osmfapra::CHEdge> allEdgesToBeAdded;
+	std::map<NodeId, std::vector<osmfapra::CHEdge>> edgesToBeAddedMap;
+	std::vector<NodeId > nodesToContract;
+	double totalEdgeDifference = 0;
+	auto start = std::chrono::steady_clock::now();
+	std::vector<EdgeDifferenceNode> edgeDifferenceVector;
+	std::vector<NodeId> nodesToBeContracted;
+	std::set<NodeId> contracted;
+	for(const auto& id : independentSet) {
+		std::vector<osmfapra::CHEdge> edgesToBeAdded;
+		int64_t edgeDifference = getShortCuts(inputGraph, myBackGraph, id);
+		totalEdgeDifference += edgeDifference;
+		edgeDifferenceVector.emplace_back(id, edgeDifference);
+		edgesToBeAddedMap[id] = edgesToBeAdded;
+	}
+	auto end = std::chrono::steady_clock::now();
+	std::cout << "Elapsed time in milliseconds : "
+			  << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()
+			  << " ms" << std::endl;
+	return totalEdgeDifference / independentSet.size();
 }
 
 

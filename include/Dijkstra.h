@@ -6,6 +6,7 @@
 #define OSM_FAPRA_DIJKSTRA_H
 
 #include "Graph.h"
+#include "GraphBuilder.h"
 
 namespace osmfapra {
 class CostNode {
@@ -33,19 +34,19 @@ public:
 		previousNode.reserve(graph.nodes.size());
 		while (costs.size() < graph.nodes.size()) {
 			costs.emplace_back(std::numeric_limits<Distance >::max());
+			previousNode.emplace_back(std::numeric_limits<NodeId>::max());
 		}
 	}
 	Distance shortestDistance(NodeId source, NodeId target);
 	Distance shortestDistance(LatLng source, LatLng target);
-	std::vector<NodeId> shortestPath(NodeId source, NodeId target);
+	static std::vector<NodeId> shortestPath(NodeId source, NodeId target, const std::vector<NodeId>& myPreviousNode);
 	std::vector<Distance> shortestDistance(LatLng source, const std::vector<LatLng>& targets);
 	bool checkInPath(NodeId source, NodeId target, NodeId v);
 
 	std::vector<osmfapra::Distance> multiSourceMultiTarget(const std::vector<NodeId>& sources, const std::vector<NodeId>& targets);
 	std::vector<osmfapra::Distance> multiSourceMultiTarget(const std::vector<LatLng>& sources, const std::vector<LatLng>& targets);
 
-	template <typename GraphT>
-	static NodeId getClosestNode(GraphT& graph, osmfapra::LatLng latLng);
+	std::vector<osmfapra::LatLng> shortestPath(LatLng source, LatLng target);
 };
 }
 
